@@ -53,7 +53,9 @@ def login():
             "username": request.form["username"],
             "password": request.form["password"]
         }
+
         res = requests.post(f"{BASE_API_URL}/api/auth/login", json=data)
+        print("Login Response:", res.status_code, res.text)  # 👈 Add this line
 
         if res.status_code == 200:
             token = res.json().get("access_token") or res.json().get("token")
@@ -64,11 +66,14 @@ def login():
             session["user_id"] = decoded["sub"]
             return redirect("/dashboard")
         return render_template("login.html", error=res.json().get("error", "Login failed"))
+
     return render_template("login.html")
 
 @app.route("/dashboard")
 def dashboard():
     if "token" not in session:
+        print("Token in session:", session.get("token"))
+        print("User accessing dashboard:", session.get("user_id"))
         return redirect("/login")
 
     headers = {"Authorization": f"Bearer {session['token']}"}
