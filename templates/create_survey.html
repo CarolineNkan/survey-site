@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2 class="mb-4">➕ Create a New Survey</h2>
+
+{% if error %}
+  <div style="color: red;">{{ error }}</div>
+{% endif %}
+
+<form method="POST">
+  <div class="form-group mb-3">
+    <label for="title">Survey Title</label>
+    <input type="text" class="form-control" name="title" required>
+  </div>
+
+  <div class="form-group mb-3">
+    <label for="description">Survey Description</label>
+    <textarea class="form-control" name="description" rows="3" required></textarea>
+  </div>
+
+  <button type="submit" class="btn btn-primary">Create Survey ✅</button>
+</form>
+{% endblock %}

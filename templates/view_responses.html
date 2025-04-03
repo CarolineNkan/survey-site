@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>📊 Survey Responses</h2>
+<p><strong>Survey ID:</strong> {{ survey_id }}</p>
+
+{% if grouped_responses %}
+    {% for question, answers in grouped_responses.items() %}
+        <p><strong>Q:</strong> {{ question }}</p>
+        <ul>
+            {% for answer in answers %}
+                <li>{{ answer.answer_text }}</li>
+            {% endfor %}
+        </ul>
+    {% endfor %}
+{% else %}
+    <p>No responses yet.</p>
+{% endif %}
+
+<a href="/dashboard">← Back to Dashboard</a>
+
+{% endblock %}
+

@@ -1,0 +1,10 @@
+<h2>Answer Survey {{ survey_id }}</h2>
+<form method="POST">
+  {% for q in questions %}
+    <p>{{ q.answer_text }}</p>
+    <input type="text" name="q{{ q.answer_id }}" placeholder="Your answer" required>
+  {% endfor %}
+  <button type="submit">Submit</button>
+</form>
+
+

@@ -1,0 +1,31 @@
+<!-- templates/answer.html -->
+{% extends "base.html" %}
+
+{% block content %}
+  <h1>Answer Survey {{ survey_id }}</h1>
+
+  {% if done %}
+    <p>✅ You have completed the survey!</p>
+    <a href="/dashboard">← Back to Dashboard</a>
+  {% elif question %}
+    <form method="POST">
+      <p><strong>{{ question.question_text }}</strong></p>
+      <input type="hidden" name="question_id" value="{{ question.question_id }}">
+      <input type="text" name="answer" placeholder="Enter your answer" required>
+      <button type="submit">Submit Answer</button>
+    </form>
+    <a href="/dashboard">← Back to Dashboard</a>
+  {% elif error %}
+    <p style="color:red;">{{ error }}</p>
+    <a href="/dashboard">← Back to Dashboard</a>
+  {% else %}
+    <p>No questions available for this survey.</p>
+    <a href="/dashboard">← Back to Dashboard</a>
+  {% endif %}
+
+{% endblock %}
+
+
+
+
+
