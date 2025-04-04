@@ -100,20 +100,33 @@ def logout():
 
 @app.route("/create-survey", methods=["GET", "POST"])
 def create_survey():
-    if "user_id" not in session:
+    user_id = session.get("user_id")
+    if not user_id:
+        flash("Please log in to create surveys.")
         return redirect("/login")
 
     if request.method == "POST":
-        data = {
-            "title": request.form["title"],
-            "description": request.form["description"]
-        }
-        res = requests.post("http://127.0.0.1:5000/api/surveys", json=data, cookies=session)
-        if res.status_code == 201:
+        title = request.form.get("title")
+        description = request.form.get("description")
+
+        if not title:
+            return render_template("create_survey.html", error="Survey title is required")
+
+        db = get_db()
+        cursor = db.cursor()
+        try:
+            cursor.execute(
+                "INSERT INTO surveys (title, description, created_by) VALUES (?, ?, ?)",
+                (title, description, user_id)
+            )
+            db.commit()
+            flash("✅ Survey created!")
             return redirect("/dashboard")
-        return render_template("create_survey.html", error="Survey creation failed.")
+        except Exception as e:
+            return render_template("create_survey.html", error=f"Error: {str(e)}")
 
     return render_template("create_survey.html")
+
 
 @app.route("/surveys/<int:survey_id>/questions", methods=["GET", "POST"])
 def questions(survey_id):
