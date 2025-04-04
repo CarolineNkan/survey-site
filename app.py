@@ -77,15 +77,20 @@ def signup():
 
 @app.route("/dashboard")
 def dashboard():
-    if "user_id" not in session:
-        flash("⚠️ Please log in to access the dashboard.")
+    user_id = session.get("user_id")
+    if not user_id:
+        flash("Please log in.")
         return redirect("/login")
 
-    res = requests.get("http://127.0.0.1:5000/api/surveys/my-surveys", cookies=session)
-    if res.status_code == 200:
-        surveys = res.json().get("surveys", [])
+    db = get_db()
+    cursor = db.cursor()
+    try:
+        cursor.execute("SELECT * FROM surveys WHERE created_by = ?", (user_id,))
+        surveys = cursor.fetchall()
         return render_template("dashboard.html", surveys=surveys)
-    return render_template("dashboard.html", error="Unable to load surveys.")
+    except Exception as e:
+        return render_template("dashboard.html", error=str(e))
+
 
 @app.route("/logout")
 def logout():
