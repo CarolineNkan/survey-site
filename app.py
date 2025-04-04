@@ -1,28 +1,30 @@
 from flask import Flask, render_template, request, redirect, session, flash
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager, decode_token
-from flask_mysqldb import MySQL
 from config import Config
 from routes.auth_routes import auth_bp
 from routes.survey_routes import survey_bp
+from db import get_db, close_db
 import requests
 from collections import defaultdict
+import os
 
-# ✅ Render-safe deployed backend base URL
-BASE_API_URL = "https://survey-site-98jc.onrender.com"
+# ✅ Automatically use correct backend API URL (local or Render)
+BASE_API_URL = os.getenv("API_HOST", "http://127.0.0.1:5000")
 
 app = Flask(__name__)
 app.config.from_object(Config)
 app.secret_key = "secret123"
 app.config["JWT_SECRET_KEY"] = "your_jwt_key"
 
-# Initialize extensions
+# ✅ Setup DB teardown
+app.teardown_appcontext(close_db)
+
+# ✅ Initialize extensions
 CORS(app)
 jwt = JWTManager(app)
-mysql = MySQL(app)
-app.mysql = mysql
 
-# Register API Blueprints
+# ✅ Register Blueprints
 app.register_blueprint(auth_bp, url_prefix="/api/auth")
 app.register_blueprint(survey_bp, url_prefix="/api/surveys")
 
@@ -46,6 +48,7 @@ def signup():
         return render_template("signup.html", error=res.json()["error"])
     return render_template("signup.html")
 
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -55,7 +58,7 @@ def login():
         }
 
         res = requests.post(f"{BASE_API_URL}/api/auth/login", json=data)
-        print("Login Response:", res.status_code, res.text)  # 👈 Add this line
+        print("Login Response:", res.status_code, res.text)
 
         if res.status_code == 200:
             token = res.json().get("access_token") or res.json().get("token")
@@ -69,11 +72,10 @@ def login():
 
     return render_template("login.html")
 
+
 @app.route("/dashboard")
 def dashboard():
     if "token" not in session:
-        print("Token in session:", session.get("token"))
-        print("User accessing dashboard:", session.get("user_id"))
         return redirect("/login")
 
     headers = {"Authorization": f"Bearer {session['token']}"}
@@ -81,6 +83,7 @@ def dashboard():
 
     surveys = res.json().get("surveys", []) if res.status_code == 200 else []
     return render_template("dashboard.html", surveys=surveys)
+
 
 @app.route("/surveys/<int:survey_id>/delete", methods=["POST"])
 def delete_survey(survey_id):
@@ -90,6 +93,7 @@ def delete_survey(survey_id):
     res = requests.post(f"{BASE_API_URL}/api/surveys/{survey_id}/delete", headers=headers)
     flash("✅ Deleted!" if res.status_code == 200 else "❌ Delete failed.")
     return redirect("/dashboard")
+
 
 @app.route("/create-survey", methods=["GET", "POST"])
 def create_survey_form():
@@ -107,6 +111,7 @@ def create_survey_form():
         return render_template("create_survey.html", error=res.json().get("error", "Error creating survey"))
     return render_template("create_survey.html")
 
+
 @app.route("/surveys/<int:survey_id>/questions", methods=["GET", "POST"])
 def add_question_ui(survey_id):
     if "token" not in session:
@@ -120,13 +125,14 @@ def add_question_ui(survey_id):
         else:
             flash(res.json().get("error", "Failed to add question."))
         return redirect(f"/surveys/{survey_id}/questions")
-    # GET Questions
+    
     try:
         res = requests.get(f"{BASE_API_URL}/api/surveys/{survey_id}/questions", headers=headers)
         questions = res.json().get("questions", []) if res.status_code == 200 else []
     except Exception:
         questions = []
     return render_template("questions.html", survey_id=survey_id, questions=questions)
+
 
 @app.route("/surveys/<int:survey_id>/answer", methods=["GET", "POST"])
 def answer_survey(survey_id):
@@ -143,6 +149,7 @@ def answer_survey(survey_id):
             session.setdefault("answered_questions", []).append(int(question_id))
         else:
             return render_template("answer.html", survey_id=survey_id, error="Failed to submit")
+    
     res = requests.get(f"{BASE_API_URL}/api/surveys/{survey_id}/questions", headers=headers)
     questions = res.json().get("questions", []) if res.status_code == 200 else []
     answered = session.get("answered_questions", [])
@@ -151,6 +158,7 @@ def answer_survey(survey_id):
         session.pop("answered_questions", None)
         return render_template("answer.html", survey_id=survey_id, done=True)
     return render_template("answer.html", survey_id=survey_id, question=next_question)
+
 
 @app.route("/surveys/<int:survey_id>/responses")
 def view_responses(survey_id):
@@ -162,3 +170,4 @@ def view_responses(survey_id):
     for r in res.json().get("responses", []):
         grouped[r["question_text"]].append(r)
     return render_template("view_responses.html", grouped_responses=grouped, survey_id=survey_id)
+
