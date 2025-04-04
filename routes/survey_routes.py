@@ -2,7 +2,6 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from db import get_db
 
-
 survey_bp = Blueprint("survey", __name__)
 
 # ✅ Create a new survey
@@ -18,29 +17,30 @@ def create_survey():
         return jsonify({"error": "Survey title is required"}), 400
 
     db = get_db()
-    cursor = db.cursor(dictionary=True)
+    cursor = db.cursor()
     try:
         cursor.execute(
-            "INSERT INTO surveys (title, description, created_by) VALUES (%s, %s, %s)",
+            "INSERT INTO surveys (title, description, created_by) VALUES (?, ?, ?)",
             (title, description, user_id)
         )
         db.commit()
-        return jsonify({"message": "Survey created successfully"}), 201
+        return jsonify({"message": "✅ Survey created"}), 201
     except Exception as e:
+        db.rollback()
         return jsonify({"error": str(e)}), 500
     finally:
         cursor.close()
 
-# ✅ Get all surveys created by the current user
+# ✅ Get surveys created by the user
 @survey_bp.route("/my-surveys", methods=["GET"])
 @jwt_required()
-def get_user_surveys():
+def get_my_surveys():
     user_id = get_jwt_identity()
     db = get_db()
-    cursor = db.cursor(dictionary=True)
+    cursor = db.cursor()
     try:
-        cursor.execute("SELECT * FROM surveys WHERE created_by = %s", (user_id,))
-        surveys = cursor.fetchall()
+        cursor.execute("SELECT * FROM surveys WHERE created_by = ?", (user_id,))
+        surveys = [dict(row) for row in cursor.fetchall()]
         return jsonify({"surveys": surveys}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -58,31 +58,32 @@ def add_question(survey_id):
         return jsonify({"error": "Question text is required"}), 400
 
     db = get_db()
-    cursor = db.cursor(dictionary=True)
+    cursor = db.cursor()
     try:
         cursor.execute(
-            "INSERT INTO questions (survey_id, question_text) VALUES (%s, %s)",
+            "INSERT INTO questions (survey_id, question_text) VALUES (?, ?)",
             (survey_id, question_text)
         )
         db.commit()
-        return jsonify({"message": "Question added successfully"}), 201
+        return jsonify({"message": "✅ Question added"}), 201
     except Exception as e:
+        db.rollback()
         return jsonify({"error": str(e)}), 500
     finally:
         cursor.close()
 
-# ✅ Get all questions for a given survey
+# ✅ Get questions for a survey
 @survey_bp.route("/<int:survey_id>/questions", methods=["GET"])
 @jwt_required()
 def get_questions(survey_id):
     db = get_db()
-    cursor = db.cursor(dictionary=True)
+    cursor = db.cursor()
     try:
         cursor.execute(
-            "SELECT question_id, question_text FROM questions WHERE survey_id = %s",
+            "SELECT question_id, question_text FROM questions WHERE survey_id = ?",
             (survey_id,)
         )
-        questions = cursor.fetchall()
+        questions = [dict(row) for row in cursor.fetchall()]
         return jsonify({"questions": questions}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -92,77 +93,78 @@ def get_questions(survey_id):
 # ✅ Submit a survey answer
 @survey_bp.route("/<int:survey_id>/answer", methods=["POST"])
 @jwt_required()
-def submit_survey_answer(survey_id):
+def answer_survey(survey_id):
+    user_id = get_jwt_identity()
+    data = request.get_json()
+    question_id = data.get("question_id")
+    answer_text = data.get("answer")
+
+    if not all([question_id, answer_text]):
+        return jsonify({"error": "Missing question or answer"}), 400
+
+    db = get_db()
+    cursor = db.cursor()
     try:
-        user_id = get_jwt_identity()
-        data = request.get_json()
-        question_id = data.get("question_id")
-        answer_text = data.get("answer")
-
-        if not all([question_id, answer_text]):
-            return jsonify({"error": "Missing question or answer"}), 400
-
-        db = get_db()
-        cursor = db.cursor()
-        cursor.execute("""
-            INSERT INTO responses (survey_id, question_id, user_id, answer_text)
-            VALUES (%s, %s, %s, %s)
-        """, (survey_id, question_id, user_id, answer_text))
+        cursor.execute(
+            "INSERT INTO responses (survey_id, question_id, user_id, answer_text) VALUES (?, ?, ?, ?)",
+            (survey_id, question_id, user_id, answer_text)
+        )
         db.commit()
-        return jsonify({"message": "Answer submitted successfully"}), 201
+        return jsonify({"message": "✅ Answer submitted"}), 201
     except Exception as e:
+        db.rollback()
         return jsonify({"error": str(e)}), 500
     finally:
         cursor.close()
 
-# ✅ Get all responses for a survey
+# ✅ View responses grouped by question
 @survey_bp.route("/<int:survey_id>/responses", methods=["GET"])
 @jwt_required()
-def get_survey_responses(survey_id):
+def view_responses(survey_id):
     db = get_db()
-    cursor = db.cursor(dictionary=True)
+    cursor = db.cursor()
     try:
         cursor.execute("""
             SELECT 
-                a.answer_text, 
-                q.question_text, 
-                q.question_id
-            FROM responses a
-            JOIN questions q ON a.question_id = q.question_id
-            WHERE a.survey_id = %s
+                r.answer_text, 
+                q.question_text
+            FROM responses r
+            JOIN questions q ON r.question_id = q.question_id
+            WHERE r.survey_id = ?
         """, (survey_id,))
-        responses = cursor.fetchall()
-        return jsonify({"responses": responses}), 200
+        rows = cursor.fetchall()
+
+        grouped = {}
+        for answer_text, question_text in rows:
+            grouped.setdefault(question_text, []).append(answer_text)
+
+        return jsonify({"responses": grouped}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     finally:
         cursor.close()
 
-# ✅ Delete a survey and all related data
-@survey_bp.route('/<int:survey_id>/delete', methods=['POST'])
+# ✅ Delete survey + all related questions/responses
+@survey_bp.route("/<int:survey_id>/delete", methods=["POST"])
 @jwt_required()
 def delete_survey(survey_id):
     db = get_db()
-    cur = db.cursor()
+    cursor = db.cursor()
     try:
-        # Delete responses
-        cur.execute("""
+        # Delete responses linked to questions in the survey
+        cursor.execute("""
             DELETE FROM responses 
             WHERE question_id IN (
-                SELECT question_id FROM questions WHERE survey_id = %s
+                SELECT question_id FROM questions WHERE survey_id = ?
             )
         """, (survey_id,))
 
-        # Delete questions
-        cur.execute("DELETE FROM questions WHERE survey_id = %s", (survey_id,))
-
-        # Delete survey
-        cur.execute("DELETE FROM surveys WHERE survey_id = %s", (survey_id,))
-
+        cursor.execute("DELETE FROM questions WHERE survey_id = ?", (survey_id,))
+        cursor.execute("DELETE FROM surveys WHERE survey_id = ?", (survey_id,))
         db.commit()
-        return jsonify({"message": f"✅ Survey {survey_id} deleted successfully"}), 200
+        return jsonify({"message": "🗑️ Survey deleted"}), 200
     except Exception as e:
         db.rollback()
-        return jsonify({"error": "Failed to delete survey", "details": str(e)}), 500
+        return jsonify({"error": str(e)}), 500
     finally:
-        cur.close()
+        cursor.close()
