@@ -1,6 +1,6 @@
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from MySQLdb.cursors import DictCursor
+from db import get_db
 
 survey_bp = Blueprint("survey", __name__)
 
@@ -16,14 +16,14 @@ def create_survey():
     if not title:
         return jsonify({"error": "Survey title is required"}), 400
 
-    mysql = current_app.mysql
-    cursor = mysql.connection.cursor()
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
     try:
         cursor.execute(
             "INSERT INTO surveys (title, description, created_by) VALUES (%s, %s, %s)",
             (title, description, user_id)
         )
-        mysql.connection.commit()
+        db.commit()
         return jsonify({"message": "Survey created successfully"}), 201
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -35,8 +35,8 @@ def create_survey():
 @jwt_required()
 def get_user_surveys():
     user_id = get_jwt_identity()
-    mysql = current_app.mysql
-    cursor = mysql.connection.cursor(DictCursor)
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
     try:
         cursor.execute("SELECT * FROM surveys WHERE created_by = %s", (user_id,))
         surveys = cursor.fetchall()
@@ -56,14 +56,14 @@ def add_question(survey_id):
     if not question_text:
         return jsonify({"error": "Question text is required"}), 400
 
-    mysql = current_app.mysql
-    cursor = mysql.connection.cursor(DictCursor)
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
     try:
         cursor.execute(
             "INSERT INTO questions (survey_id, question_text) VALUES (%s, %s)",
             (survey_id, question_text)
         )
-        mysql.connection.commit()
+        db.commit()
         return jsonify({"message": "Question added successfully"}), 201
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -74,8 +74,8 @@ def add_question(survey_id):
 @survey_bp.route("/<int:survey_id>/questions", methods=["GET"])
 @jwt_required()
 def get_questions(survey_id):
-    mysql = current_app.mysql
-    cursor = mysql.connection.cursor(DictCursor)
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
     try:
         cursor.execute(
             "SELECT question_id, question_text FROM questions WHERE survey_id = %s",
@@ -101,13 +101,13 @@ def submit_survey_answer(survey_id):
         if not all([question_id, answer_text]):
             return jsonify({"error": "Missing question or answer"}), 400
 
-        mysql = current_app.mysql
-        cursor = mysql.connection.cursor()
+        db = get_db()
+        cursor = db.cursor()
         cursor.execute("""
             INSERT INTO responses (survey_id, question_id, user_id, answer_text)
             VALUES (%s, %s, %s, %s)
         """, (survey_id, question_id, user_id, answer_text))
-        mysql.connection.commit()
+        db.commit()
         return jsonify({"message": "Answer submitted successfully"}), 201
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -118,9 +118,9 @@ def submit_survey_answer(survey_id):
 @survey_bp.route("/<int:survey_id>/responses", methods=["GET"])
 @jwt_required()
 def get_survey_responses(survey_id):
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
     try:
-        mysql = current_app.mysql
-        cursor = mysql.connection.cursor(DictCursor)
         cursor.execute("""
             SELECT 
                 a.answer_text, 
@@ -141,11 +141,10 @@ def get_survey_responses(survey_id):
 @survey_bp.route('/<int:survey_id>/delete', methods=['POST'])
 @jwt_required()
 def delete_survey(survey_id):
+    db = get_db()
+    cur = db.cursor()
     try:
-        mysql = current_app.mysql
-        cur = mysql.connection.cursor()
-
-        # Delete responses linked to the survey
+        # Delete responses
         cur.execute("""
             DELETE FROM responses 
             WHERE question_id IN (
@@ -153,16 +152,16 @@ def delete_survey(survey_id):
             )
         """, (survey_id,))
 
-        # Delete the survey's questions
+        # Delete questions
         cur.execute("DELETE FROM questions WHERE survey_id = %s", (survey_id,))
 
-        # Delete the survey
+        # Delete survey
         cur.execute("DELETE FROM surveys WHERE survey_id = %s", (survey_id,))
 
-        mysql.connection.commit()
+        db.commit()
         return jsonify({"message": f"✅ Survey {survey_id} deleted successfully"}), 200
     except Exception as e:
-        mysql.connection.rollback()
+        db.rollback()
         return jsonify({"error": "Failed to delete survey", "details": str(e)}), 500
     finally:
         cur.close()
