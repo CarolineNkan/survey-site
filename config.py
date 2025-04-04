@@ -1,11 +1,8 @@
-
-
 import os
 
+basedir = os.path.abspath(os.path.dirname(__file__))
+
 class Config:
-    MYSQL_HOST = os.getenv("MYSQL_HOST")
-    MYSQL_USER = os.getenv("MYSQL_USER")
-    MYSQL_PASSWORD = os.getenv("MYSQL_PASSWORD")
-    MYSQL_DB = os.getenv("MYSQL_DB")
-    MYSQL_PORT = int(os.getenv("MYSQL_PORT", 3306))
-    MYSQL_SSL_CA = "/etc/ssl/certs/ca-certificates.crt"
+    DATABASE = os.path.join(basedir, "survey.db")
+    SECRET_KEY = os.getenv("SECRET_KEY", "dev_secret")
+    JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "jwt_secret")
