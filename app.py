@@ -146,40 +146,48 @@ def add_questions(survey_id):
     return render_template("add_questions.html", survey_id=survey_id, questions=questions)
 
 
-    
-
 @app.route("/surveys/<int:survey_id>/answer", methods=["GET", "POST"])
 def answer_survey(survey_id):
     if "user_id" not in session:
         return redirect("/login")
 
+    user_id = session["user_id"]
     db = get_db()
     cursor = db.cursor()
 
-    cursor.execute("SELECT question_id, question_text FROM questions WHERE survey_id = ?", (survey_id,))
+    if request.method == "POST":
+        answer = request.form.get("answer")
+        question_id = request.form.get("question_id")
+
+        if answer and question_id:
+            cursor.execute("""
+                INSERT INTO responses (survey_id, question_id, user_id, answer_text)
+                VALUES (?, ?, ?, ?)
+            """, (survey_id, question_id, user_id, answer))
+            db.commit()
+
+    # 🔄 Fetch all questions
+    cursor.execute("""
+        SELECT q.question_id, q.question_text
+        FROM questions q
+        WHERE q.survey_id = ?
+    """, (survey_id,))
     questions = cursor.fetchall()
 
-    if "answered_questions" not in session:
-        session["answered_questions"] = []
+    # 🔍 Get already answered questions
+    cursor.execute("""
+        SELECT question_id FROM responses
+        WHERE survey_id = ? AND user_id = ?
+    """, (survey_id, user_id))
+    answered_ids = [row["question_id"] for row in cursor.fetchall()]
 
-    if request.method == "POST":
-        answer = request.form["answer"]
-        question_id = request.form["question_id"]
+    # ⏭️ Pick next unanswered question
+    next_question = next((q for q in questions if q["question_id"] not in answered_ids), None)
 
-        cursor.execute("""
-            INSERT INTO responses (survey_id, question_id, user_id, answer_text)
-            VALUES (?, ?, ?, ?)
-        """, (survey_id, question_id, session["user_id"], answer))
-        db.commit()
-        session["answered_questions"].append(int(question_id))
-
-    next_q = next((q for q in questions if q[0] not in session["answered_questions"]), None)
-
-    if not next_q:
-        session.pop("answered_questions", None)
+    if not next_question:
         return render_template("answer.html", done=True)
 
-    return render_template("answer.html", survey_id=survey_id, question={"question_id": next_q[0], "question_text": next_q[1]})
+    return render_template("answer.html", question=next_question, survey_id=survey_id)
 
 @app.route("/surveys/<int:survey_id>/responses")
 def view_responses(survey_id):
