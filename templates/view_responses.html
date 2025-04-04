@@ -1,23 +1,19 @@
 {% extends "base.html" %}
+
 {% block content %}
+  <h1>📊 Survey Responses</h1>
+  <p><strong>Survey ID:</strong> {{ survey_id }}</p>
 
-<h2>📊 Survey Responses</h2>
-<p><strong>Survey ID:</strong> {{ survey_id }}</p>
+  {% for question, answers in grouped_responses.items() %}
+    <p><strong>Q:</strong> {{ question }}</p>
+    <ul>
+      {% for answer in answers %}
+        <li>{{ answer }}</li>
+      {% endfor %}
+    </ul>
+  {% endfor %}
 
-{% if grouped_responses %}
-    {% for question, answers in grouped_responses.items() %}
-        <p><strong>Q:</strong> {{ question }}</p>
-        <ul>
-            {% for answer in answers %}
-                <li>{{ answer.answer_text }}</li>
-            {% endfor %}
-        </ul>
-    {% endfor %}
-{% else %}
-    <p>No responses yet.</p>
-{% endif %}
-
-<a href="/dashboard">← Back to Dashboard</a>
-
+  <p><a href="/dashboard">← Back to Dashboard</a></p>
 {% endblock %}
+
 
