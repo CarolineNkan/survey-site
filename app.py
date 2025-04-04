@@ -128,11 +128,11 @@ def add_questions(survey_id):
     cursor = db.cursor()
 
     if request.method == "POST":
-        question = request.form.get("question_text")
-        if question:
+        question_text = request.form.get("question_text")  # 🔁 fix name match
+        if question_text:
             cursor.execute(
                 "INSERT INTO questions (survey_id, question_text) VALUES (?, ?)",
-                (survey_id, question)
+                (survey_id, question_text)
             )
             db.commit()
             flash("✅ Question added!")
@@ -141,6 +141,8 @@ def add_questions(survey_id):
     questions = cursor.fetchall()
 
     return render_template("add_questions.html", questions=questions, survey_id=survey_id)
+
+    
 
 @app.route("/surveys/<int:survey_id>/answer", methods=["GET", "POST"])
 def answer_survey(survey_id):
