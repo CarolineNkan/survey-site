@@ -128,19 +128,23 @@ def add_questions(survey_id):
     cursor = db.cursor()
 
     if request.method == "POST":
-        question_text = request.form.get("question_text")  # 🔁 fix name match
+        question_text = request.form.get("question_text")  # ✅ Correct field name
         if question_text:
-            cursor.execute(
-                "INSERT INTO questions (survey_id, question_text) VALUES (?, ?)",
-                (survey_id, question_text)
-            )
-            db.commit()
-            flash("✅ Question added!")
+            try:
+                cursor.execute(
+                    "INSERT INTO questions (survey_id, question_text) VALUES (?, ?)",
+                    (survey_id, question_text)
+                )
+                db.commit()
+                flash("✅ Question added!")
+            except Exception as e:
+                flash(f"❌ Failed to add question: {str(e)}")
 
     cursor.execute("SELECT question_text FROM questions WHERE survey_id = ?", (survey_id,))
     questions = cursor.fetchall()
 
-    return render_template("add_questions.html", questions=questions, survey_id=survey_id)
+    return render_template("add_questions.html", survey_id=survey_id, questions=questions)
+
 
     
 
