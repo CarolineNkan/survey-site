@@ -1,75 +1,25 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Dashboard</title>
-    <style>
-        body {
-            font-family: 'Segoe UI', sans-serif;
-            padding: 2rem;
-        }
+{% extends "base.html" %}
+{% block content %}
+  <h2>Welcome, {{ username }}!</h2>
+  <p><a href="/create-survey">➕ Create Survey</a> | <a href="/logout">🚪 Logout</a></p>
+  <h3>Your Surveys</h3>
+  {% if surveys %}
+    <ul>
+      {% for survey in surveys %}
+        <li>
+          {{ survey.title }} - 
+          <a href="/surveys/{{ loop.index }}/questions">📝 Add Questions</a> | 
+          <a href="/surveys/{{ loop.index }}/answer">🗳️ Answer</a> | 
+          <a href="/surveys/{{ loop.index }}/responses">📊 View Responses</a>
+          <form method="POST" action="/surveys/{{ survey.survey_id }}/delete" style="display:inline;">
+            <button type="submit" onclick="return confirm('Are you sure?')">🗑️ Delete</button>
+          </form>
+          
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p>No surveys yet!</p>
+  {% endif %}
+{% endblock %}
 
-        h1 {
-            font-size: 2.2rem;
-        }
-
-        button {
-            margin-left: 10px;
-            padding: 5px 10px;
-            border: none;
-            background-color: #e74c3c;
-            color: white;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-
-        button:hover {
-            background-color: #c0392b;
-        }
-
-        .survey-actions a {
-            margin-right: 10px;
-        }
-    </style>
-</head>
-<body>
-
-    <h1>👋 Welcome to your dashboard, {{ session.get('username', '') }}!</h1>
-
-    <p>
-        <a href="/create-survey">
-            <button>➕ Create New Survey</button>
-        </a>
-    </p>
-
-    {% if surveys %}
-        <ul>
-        {% for survey in surveys %}
-            <li>
-                <strong>{{ survey.title }}</strong><br>
-                {{ survey.description or 'None' }}<br>
-                Created at: {{ survey.created_at }}<br>
-
-                <div class="survey-actions">
-                    ✍️ <a href="/surveys/{{ survey.survey_id }}/questions">Add Questions</a>
-                    📝 <a href="/surveys/{{ survey.survey_id }}/answer">Answer Survey</a>
-                    📃 <a href="/surveys/{{ survey.survey_id }}/responses">View Responses</a>
-
-                    <!-- 🗑️ Delete button form -->
-                    <form method="POST" action="/surveys/{{ survey.survey_id }}/delete" style="display:inline;">
-                        <button type="submit" onclick="return confirm('Are you sure you want to delete this survey?')">
-                            🗑️ Delete
-                        </button>
-                    </form>
-                </div>
-
-                <br><br>
-            </li>
-        {% endfor %}
-        </ul>
-    {% else %}
-        <p>No surveys found. Create one to get started!</p>
-    {% endif %}
-
-</body>
-</html>
