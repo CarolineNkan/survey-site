@@ -47,22 +47,33 @@ def login():
 
     return render_template("login.html")
 
+from werkzeug.security import generate_password_hash
+
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
     if request.method == "POST":
-        data = {
-            "username": request.form["username"],
-            "email": request.form["email"],
-            "password": request.form["password"]
-        }
+        username = request.form.get("username")
+        email = request.form.get("email")
+        password = request.form.get("password")
 
-        res = requests.post("http://127.0.0.1:5000/api/auth/signup", json=data)
-        if res.status_code == 201:
-            flash("🎉 Signup successful! Please log in.")
+        if not username or not password:
+            return render_template("signup.html", error="Username and password required")
+
+        db = get_db()
+        cursor = db.cursor()
+        try:
+            cursor.execute("""
+                INSERT INTO users (username, email, password)
+                VALUES (?, ?, ?)
+            """, (username, email, generate_password_hash(password)))
+            db.commit()
+            flash("🎉 Signup successful!")
             return redirect("/login")
-        return render_template("signup.html", error=res.json().get("error", "Signup failed"))
+        except Exception as e:
+            return render_template("signup.html", error="Username might already exist 🥲")
 
     return render_template("signup.html")
+
 
 @app.route("/dashboard")
 def dashboard():
