@@ -1,18 +1,23 @@
-<h1>Add a question to Survey {{ survey_id }}</h1>
+<!DOCTYPE html>
+<html>
+<head><title>Add Questions</title></head>
+<body>
+    <h2>Add a question</h2>
+    <form method="POST">
+        <input name="question" placeholder="Your question here" required>
+        <button type="submit">Submit</button>
+    </form>
 
-<form method="POST">
-  <input type="text" name="question_text" placeholder="Enter question" required />
-  <button type="submit">➕ Add Question</button>
-</form>
+    {% if questions %}
+        <h3>Existing Questions:</h3>
+        <ul>
+            {% for q in questions %}
+                <li>{{ q[0] }}</li>
+            {% endfor %}
+        </ul>
+    {% endif %}
 
-<h2>Existing Questions</h2>
-{% if questions %}
-    <ul>
-    {% for question in questions %}
-        <li>{{ question.question_text }}</li>
-    {% endfor %}
-    </ul>
-{% else %}
-    <p>No questions yet.</p>
-{% endif %}
-<p><a href="/dashboard">🔙 Back to Dashboard</a></p>
+    <a href="/dashboard">⬅ Back to Dashboard</a>
+</body>
+</html>
+

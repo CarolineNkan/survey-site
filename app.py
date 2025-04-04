@@ -6,8 +6,7 @@ from routes.auth_routes import auth_bp
 from routes.survey_routes import survey_bp
 from flask_cors import CORS
 from collections import defaultdict
-import requests
-from werkzeug.security import check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -47,8 +46,6 @@ def login():
 
     return render_template("login.html")
 
-from werkzeug.security import generate_password_hash
-
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
     if request.method == "POST":
@@ -69,11 +66,10 @@ def signup():
             db.commit()
             flash("🎉 Signup successful!")
             return redirect("/login")
-        except Exception as e:
+        except Exception:
             return render_template("signup.html", error="Username might already exist 🥲")
 
     return render_template("signup.html")
-
 
 @app.route("/dashboard")
 def dashboard():
@@ -84,13 +80,10 @@ def dashboard():
 
     db = get_db()
     cursor = db.cursor()
-    try:
-        cursor.execute("SELECT * FROM surveys WHERE created_by = ?", (user_id,))
-        surveys = cursor.fetchall()
-        return render_template("dashboard.html", surveys=surveys)
-    except Exception as e:
-        return render_template("dashboard.html", error=str(e))
+    cursor.execute("SELECT * FROM surveys WHERE created_by = ?", (user_id,))
+    surveys = cursor.fetchall()
 
+    return render_template("dashboard.html", surveys=surveys)
 
 @app.route("/logout")
 def logout():
@@ -114,16 +107,13 @@ def create_survey():
 
         db = get_db()
         cursor = db.cursor()
-        try:
-            cursor.execute(
-                "INSERT INTO surveys (title, description, created_by) VALUES (?, ?, ?)",
-                (title, description, user_id)
-            )
-            db.commit()
-            flash("✅ Survey created!")
-            return redirect("/dashboard")
-        except Exception as e:
-            return render_template("create_survey.html", error=f"Error: {str(e)}")
+        cursor.execute(
+            "INSERT INTO surveys (title, description, created_by) VALUES (?, ?, ?)",
+            (title, description, user_id)
+        )
+        db.commit()
+        flash("✅ Survey created!")
+        return redirect("/dashboard")
 
     return render_template("create_survey.html")
 
@@ -131,65 +121,79 @@ def create_survey():
 def add_questions(survey_id):
     user_id = session.get("user_id")
     if not user_id:
-        flash("⚠️ You need to be logged in to add questions.")
+        flash("⚠️ Login required.")
         return redirect("/login")
 
     db = get_db()
     cursor = db.cursor()
 
     if request.method == "POST":
-        question = request.form.get("question")
+        question = request.form.get("question_text")
         if question:
-            try:
-                cursor.execute(
-                    "INSERT INTO questions (survey_id, question_text) VALUES (?, ?)",
-                    (survey_id, question)
-                )
-                db.commit()
-                flash("✅ Question added!")
-                return redirect(f"/surveys/{survey_id}/questions")
-            except Exception as e:
-                return render_template("add_questions.html", error=f"Error: {str(e)}", survey_id=survey_id)
+            cursor.execute(
+                "INSERT INTO questions (survey_id, question_text) VALUES (?, ?)",
+                (survey_id, question)
+            )
+            db.commit()
+            flash("✅ Question added!")
 
-    # GET request: fetch existing questions
     cursor.execute("SELECT question_text FROM questions WHERE survey_id = ?", (survey_id,))
     questions = cursor.fetchall()
 
     return render_template("add_questions.html", questions=questions, survey_id=survey_id)
-
 
 @app.route("/surveys/<int:survey_id>/answer", methods=["GET", "POST"])
 def answer_survey(survey_id):
     if "user_id" not in session:
         return redirect("/login")
 
+    db = get_db()
+    cursor = db.cursor()
+
+    cursor.execute("SELECT question_id, question_text FROM questions WHERE survey_id = ?", (survey_id,))
+    questions = cursor.fetchall()
+
+    if "answered_questions" not in session:
+        session["answered_questions"] = []
+
     if request.method == "POST":
         answer = request.form["answer"]
         question_id = request.form["question_id"]
-        data = {"answer": answer, "question_id": question_id}
-        requests.post(f"http://127.0.0.1:5000/api/surveys/{survey_id}/answer", json=data, cookies=session)
 
-    res = requests.get(f"http://127.0.0.1:5000/api/surveys/{survey_id}/questions", cookies=session)
-    questions = res.json().get("questions", [])
-    answered = session.get("answered_questions", [])
-    next_question = next((q for q in questions if q["question_id"] not in answered), None)
+        cursor.execute("""
+            INSERT INTO responses (survey_id, question_id, user_id, answer_text)
+            VALUES (?, ?, ?, ?)
+        """, (survey_id, question_id, session["user_id"], answer))
+        db.commit()
+        session["answered_questions"].append(int(question_id))
 
-    if not next_question:
+    next_q = next((q for q in questions if q[0] not in session["answered_questions"]), None)
+
+    if not next_q:
+        session.pop("answered_questions", None)
         return render_template("answer.html", done=True)
 
-    session.setdefault("answered_questions", []).append(next_question["question_id"])
-    return render_template("answer.html", question=next_question, survey_id=survey_id)
+    return render_template("answer.html", survey_id=survey_id, question={"question_id": next_q[0], "question_text": next_q[1]})
 
 @app.route("/surveys/<int:survey_id>/responses")
 def view_responses(survey_id):
     if "user_id" not in session:
         return redirect("/login")
 
-    res = requests.get(f"http://127.0.0.1:5000/api/surveys/{survey_id}/responses", cookies=session)
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("""
+        SELECT 
+            a.answer_text, 
+            q.question_text 
+        FROM responses a
+        JOIN questions q ON a.question_id = q.question_id
+        WHERE a.survey_id = ?
+    """, (survey_id,))
+    responses = cursor.fetchall()
+
     grouped = defaultdict(list)
+    for answer, question in responses:
+        grouped[question].append(answer)
 
-    if res.status_code == 200:
-        for r in res.json().get("responses", []):
-            grouped[r["question_text"]].append(r)
     return render_template("view_responses.html", grouped_responses=grouped, survey_id=survey_id)
-
