@@ -6,12 +6,13 @@
 </form>
 
 <h2>Existing Questions</h2>
-<ul>
+{% if questions %}
+    <ul>
     {% for question in questions %}
-      <li>{{ question.question_text or question['question_text'] or "Missing text" }}</li>
-    {% else %}
-      <li>No questions yet.</li>
+        <li>{{ question.question_text }}</li>
     {% endfor %}
-  </ul>
-  
+    </ul>
+{% else %}
+    <p>No questions yet.</p>
+{% endif %}
 <p><a href="/dashboard">🔙 Back to Dashboard</a></p>

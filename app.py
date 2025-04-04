@@ -127,28 +127,36 @@ def create_survey():
 
     return render_template("create_survey.html")
 
-
 @app.route("/surveys/<int:survey_id>/questions", methods=["GET", "POST"])
-def questions(survey_id):
-    if "user_id" not in session:
+def add_questions(survey_id):
+    user_id = session.get("user_id")
+    if not user_id:
+        flash("⚠️ You need to be logged in to add questions.")
         return redirect("/login")
 
+    db = get_db()
+    cursor = db.cursor()
+
     if request.method == "POST":
-        question_text = request.form["question_text"]
-        data = {"question_text": question_text}
-        res = requests.post(f"http://127.0.0.1:5000/api/surveys/{survey_id}/add-question", json=data, cookies=session)
-        if res.status_code == 201:
-            flash("✅ Question added!")
-        else:
-            flash("❌ Failed to add question.")
-        return redirect(f"/surveys/{survey_id}/questions")
+        question = request.form.get("question")
+        if question:
+            try:
+                cursor.execute(
+                    "INSERT INTO questions (survey_id, question_text) VALUES (?, ?)",
+                    (survey_id, question)
+                )
+                db.commit()
+                flash("✅ Question added!")
+                return redirect(f"/surveys/{survey_id}/questions")
+            except Exception as e:
+                return render_template("add_questions.html", error=f"Error: {str(e)}", survey_id=survey_id)
 
-    res = requests.get(f"http://127.0.0.1:5000/api/surveys/{survey_id}/questions", cookies=session)
-    if res.status_code == 200:
-        questions = res.json()["questions"]
-        return render_template("questions.html", questions=questions, survey_id=survey_id)
+    # GET request: fetch existing questions
+    cursor.execute("SELECT question_text FROM questions WHERE survey_id = ?", (survey_id,))
+    questions = cursor.fetchall()
 
-    return render_template("questions.html", survey_id=survey_id, error="Unable to load questions.")
+    return render_template("add_questions.html", questions=questions, survey_id=survey_id)
+
 
 @app.route("/surveys/<int:survey_id>/answer", methods=["GET", "POST"])
 def answer_survey(survey_id):
