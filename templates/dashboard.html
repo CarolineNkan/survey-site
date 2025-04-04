@@ -1,20 +1,21 @@
 {% extends "base.html" %}
 {% block content %}
-  <h2>Welcome, {{ username }}!</h2>
+  <h2>Welcome!</h2>
   <p><a href="/create-survey">➕ Create Survey</a> | <a href="/logout">🚪 Logout</a></p>
+
   <h3>Your Surveys</h3>
   {% if surveys %}
     <ul>
       {% for survey in surveys %}
         <li>
           {{ survey.title }} - 
-          <a href="/surveys/{{ loop.index }}/questions">📝 Add Questions</a> | 
-          <a href="/surveys/{{ loop.index }}/answer">🗳️ Answer</a> | 
-          <a href="/surveys/{{ loop.index }}/responses">📊 View Responses</a>
+          <a href="/surveys/{{ survey.survey_id }}/questions">📝 Add Questions</a> | 
+          <a href="/surveys/{{ survey.survey_id }}/answer">🗳️ Answer</a> | 
+          <a href="/surveys/{{ survey.survey_id }}/responses">📊 View Responses</a>
+          
           <form method="POST" action="/surveys/{{ survey.survey_id }}/delete" style="display:inline;">
             <button type="submit" onclick="return confirm('Are you sure?')">🗑️ Delete</button>
           </form>
-          
         </li>
       {% endfor %}
     </ul>
@@ -22,4 +23,5 @@
     <p>No surveys yet!</p>
   {% endif %}
 {% endblock %}
+
 

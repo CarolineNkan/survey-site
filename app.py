@@ -1,149 +1,92 @@
-import os
 from flask import Flask, render_template, request, redirect, session, flash
-from config import Config
-from db import get_db, close_db
-from routes.auth_routes import auth_bp
-from routes.survey_routes import survey_bp
-from flask_cors import CORS
-from collections import defaultdict
-from werkzeug.security import check_password_hash, generate_password_hash
 
 app = Flask(__name__)
-app.config.from_object(Config)
-app.secret_key = "secret123"
+app.secret_key = "demo_secret"
 
-# Register Blueprints
-app.register_blueprint(auth_bp, url_prefix="/api/auth")
-app.register_blueprint(survey_bp, url_prefix="/api/surveys")
+# -------------------- In-Memory Demo Storage -------------------- #
+users = [{"user_id": 1, "username": "admin", "password": "password"}]
+surveys = []
+questions = []
+responses = []
 
-# Middleware
-CORS(app)
-app.teardown_appcontext(close_db)
+# -------------------- Routes -------------------- #
 
 @app.route("/")
 def home():
-    return "🎉 Survey App is Live!"
-
-# ---------------- Frontend Routes ---------------- #
+    return "🎉  Survey App is Live!"
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         username = request.form["username"]
         password = request.form["password"]
-
-        db = get_db()
-        cursor = db.cursor()
-        cursor.execute("SELECT user_id, password FROM users WHERE username = ?", (username,))
-        user = cursor.fetchone()
-
-        if user and check_password_hash(user[1], password):
-            session["user_id"] = user[0]
-            flash("✅ Logged in!")
+        user = next((u for u in users if u["username"] == username and u["password"] == password), None)
+        if user:
+            session["user_id"] = user["user_id"]
+            flash("✅ Logged in successfully.")
             return redirect("/dashboard")
         else:
-            return render_template("login.html", error="Invalid username or password")
-
+            return render_template("login.html", error="Invalid credentials")
     return render_template("login.html")
+
 
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
     if request.method == "POST":
-        username = request.form.get("username")
-        email = request.form.get("email")
-        password = request.form.get("password")
-
-        if not username or not password:
-            return render_template("signup.html", error="Username and password required")
-
-        db = get_db()
-        cursor = db.cursor()
-        try:
-            cursor.execute("""
-                INSERT INTO users (username, email, password)
-                VALUES (?, ?, ?)
-            """, (username, email, generate_password_hash(password)))
-            db.commit()
-            flash("🎉 Signup successful!")
-            return redirect("/login")
-        except Exception:
-            return render_template("signup.html", error="Username might already exist 🥲")
-
+        new_id = len(users) + 1
+        users.append({
+            "user_id": new_id,
+            "username": request.form["username"],
+            "password": request.form["password"]
+        })
+        flash("🎉 Signup complete! Please login.")
+        return redirect("/login")
     return render_template("signup.html")
+
 
 @app.route("/dashboard")
 def dashboard():
     user_id = session.get("user_id")
     if not user_id:
-        flash("Please log in.")
         return redirect("/login")
+    user_surveys = [s for s in surveys if s["created_by"] == user_id]
+    return render_template("dashboard.html", surveys=user_surveys)
 
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("SELECT * FROM surveys WHERE created_by = ?", (user_id,))
-    surveys = cursor.fetchall()
-
-    return render_template("dashboard.html", surveys=surveys)
-
-@app.route("/logout")
-def logout():
-    session.clear()
-    flash("👋 Logged out successfully.")
-    return redirect("/login")
 
 @app.route("/create-survey", methods=["GET", "POST"])
 def create_survey():
-    user_id = session.get("user_id")
-    if not user_id:
-        flash("Please log in to create surveys.")
+    if "user_id" not in session:
         return redirect("/login")
-
+    
     if request.method == "POST":
-        title = request.form.get("title")
-        description = request.form.get("description")
-
-        if not title:
-            return render_template("create_survey.html", error="Survey title is required")
-
-        db = get_db()
-        cursor = db.cursor()
-        cursor.execute(
-            "INSERT INTO surveys (title, description, created_by) VALUES (?, ?, ?)",
-            (title, description, user_id)
-        )
-        db.commit()
+        survey_id = len(surveys) + 1
+        surveys.append({
+            "survey_id": survey_id,
+            "title": request.form["title"],
+            "description": request.form["description"],
+            "created_by": session["user_id"]
+        })
         flash("✅ Survey created!")
         return redirect("/dashboard")
-
     return render_template("create_survey.html")
+
 
 @app.route("/surveys/<int:survey_id>/questions", methods=["GET", "POST"])
 def add_questions(survey_id):
-    user_id = session.get("user_id")
-    if not user_id:
-        flash("⚠️ Login required.")
+    if "user_id" not in session:
         return redirect("/login")
 
-    db = get_db()
-    cursor = db.cursor()
-
     if request.method == "POST":
-        question_text = request.form.get("question_text")  # ✅ Correct field name
-        if question_text:
-            try:
-                cursor.execute(
-                    "INSERT INTO questions (survey_id, question_text) VALUES (?, ?)",
-                    (survey_id, question_text)
-                )
-                db.commit()
-                flash("✅ Question added!")
-            except Exception as e:
-                flash(f"❌ Failed to add question: {str(e)}")
+        question_text = request.form["question_text"]
+        questions.append({
+            "question_id": len(questions) + 1,
+            "survey_id": survey_id,
+            "question_text": question_text
+        })
+        flash("➕ Question added.")
 
-    cursor.execute("SELECT question_text FROM questions WHERE survey_id = ?", (survey_id,))
-    questions = cursor.fetchall()
-
-    return render_template("add_questions.html", survey_id=survey_id, questions=questions)
+    survey_questions = [q for q in questions if q["survey_id"] == survey_id]
+    return render_template("add_questions.html", questions=survey_questions, survey_id=survey_id)
 
 
 @app.route("/surveys/<int:survey_id>/answer", methods=["GET", "POST"])
@@ -151,63 +94,66 @@ def answer_survey(survey_id):
     if "user_id" not in session:
         return redirect("/login")
 
-    user_id = session["user_id"]
-    db = get_db()
-    cursor = db.cursor()
+    if "answered_questions" not in session:
+        session["answered_questions"] = []
 
     if request.method == "POST":
-        answer = request.form.get("answer")
-        question_id = request.form.get("question_id")
+        answer = request.form["answer"]
+        question_id = int(request.form["question_id"])
+        responses.append({
+            "survey_id": survey_id,
+            "question_id": question_id,
+            "user_id": session["user_id"],
+            "answer": answer
+        })
+        session["answered_questions"].append(question_id)
 
-        if answer and question_id:
-            cursor.execute("""
-                INSERT INTO responses (survey_id, question_id, user_id, answer_text)
-                VALUES (?, ?, ?, ?)
-            """, (survey_id, question_id, user_id, answer))
-            db.commit()
+    unanswered = [
+        q for q in questions
+        if q["survey_id"] == survey_id and q["question_id"] not in session["answered_questions"]
+    ]
 
-    # 🔄 Fetch all questions
-    cursor.execute("""
-        SELECT q.question_id, q.question_text
-        FROM questions q
-        WHERE q.survey_id = ?
-    """, (survey_id,))
-    questions = cursor.fetchall()
+    if not unanswered:
+        return render_template("answer.html", done=True, survey_id=survey_id)
 
-    # 🔍 Get already answered questions
-    cursor.execute("""
-        SELECT question_id FROM responses
-        WHERE survey_id = ? AND user_id = ?
-    """, (survey_id, user_id))
-    answered_ids = [row["question_id"] for row in cursor.fetchall()]
+    return render_template("answer.html", question=unanswered[0], survey_id=survey_id)
 
-    # ⏭️ Pick next unanswered question
-    next_question = next((q for q in questions if q["question_id"] not in answered_ids), None)
-
-    if not next_question:
-        return render_template("answer.html", done=True)
-
-    return render_template("answer.html", question=next_question, survey_id=survey_id)
 
 @app.route("/surveys/<int:survey_id>/responses")
 def view_responses(survey_id):
     if "user_id" not in session:
         return redirect("/login")
 
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("""
-        SELECT 
-            a.answer_text, 
-            q.question_text 
-        FROM responses a
-        JOIN questions q ON a.question_id = q.question_id
-        WHERE a.survey_id = ?
-    """, (survey_id,))
-    responses = cursor.fetchall()
-
-    grouped = defaultdict(list)
-    for answer, question in responses:
-        grouped[question].append(answer)
+    grouped = {}
+    for r in responses:
+        if r["survey_id"] == survey_id:
+            question_text = next((q["question_text"] for q in questions if q["question_id"] == r["question_id"]), "Unknown")
+            grouped.setdefault(question_text, []).append(r["answer"])
 
     return render_template("view_responses.html", grouped_responses=grouped, survey_id=survey_id)
+
+@app.route("/surveys/<int:survey_id>/delete", methods=["POST"])
+def delete_survey(survey_id):
+    if "user_id" not in session:
+        return redirect("/login")
+
+    global surveys, questions, responses
+    surveys = [s for s in surveys if s["survey_id"] != survey_id]
+    questions = [q for q in questions if q["survey_id"] != survey_id]
+    responses = [r for r in responses if r["survey_id"] != survey_id]
+    
+    flash("🗑️ Survey deleted.")
+    return redirect("/dashboard")
+
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    flash("👋 Logged out.")
+    return redirect("/login")
+
+# -------------------- Main -------------------- #
+
+if __name__ == "__main__":
+    app.run(debug=True)
