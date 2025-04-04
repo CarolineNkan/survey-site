@@ -49,14 +49,13 @@ def get_user_surveys():
     finally:
         cursor.close()
 
-# ✅ Add a question to a survey
 @survey_bp.route("/<int:survey_id>/add-question", methods=["POST"])
 def add_question(survey_id):
     if "user_id" not in session:
         return jsonify({"error": "Unauthorized"}), 401
 
-    data = request.get_json()
-    question_text = data.get("question_text")
+    # 🔁 Use form instead of JSON
+    question_text = request.form.get("question_text")
 
     if not question_text:
         return jsonify({"error": "Question text is required"}), 400
