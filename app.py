@@ -33,15 +33,28 @@ def login():
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
     if request.method == "POST":
+        username = request.form["username"]
+        password = request.form["password"]
+
+        # Check for duplicates
+        if any(u["username"] == username for u in users):
+            return render_template("signup.html", error="❗ Username already exists")
+
+        # Add new user
         new_id = len(users) + 1
         users.append({
             "user_id": new_id,
-            "username": request.form["username"],
-            "password": request.form["password"]
+            "username": username,
+            "password": password
         })
-        flash("🎉 Signup complete! Please login.")
-        return redirect("/login")
+
+        # Log user in immediately
+        session["user_id"] = new_id
+        flash("🎉 Signup successful! You're logged in.")
+        return redirect("/dashboard")
+
     return render_template("signup.html")
+
 
 
 @app.route("/dashboard")
