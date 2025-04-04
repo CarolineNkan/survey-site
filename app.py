@@ -7,6 +7,7 @@ from routes.survey_routes import survey_bp
 from flask_cors import CORS
 from collections import defaultdict
 import requests
+from werkzeug.security import check_password_hash
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -29,17 +30,20 @@ def home():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        data = {
-            "username": request.form["username"],
-            "password": request.form["password"]
-        }
+        username = request.form["username"]
+        password = request.form["password"]
 
-        res = requests.post("http://127.0.0.1:5000/api/auth/login", json=data)
-        if res.status_code == 200:
-            session["user_id"] = res.json()["user_id"]
-            flash("✅ Login successful!")
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute("SELECT user_id, password FROM users WHERE username = ?", (username,))
+        user = cursor.fetchone()
+
+        if user and check_password_hash(user[1], password):
+            session["user_id"] = user[0]
+            flash("✅ Logged in!")
             return redirect("/dashboard")
-        return render_template("login.html", error=res.json().get("error", "Login failed"))
+        else:
+            return render_template("login.html", error="Invalid username or password")
 
     return render_template("login.html")
 
