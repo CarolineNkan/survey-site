@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from db import get_db
 
+
 survey_bp = Blueprint("survey", __name__)
 
 # ✅ Create a new survey
