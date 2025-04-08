@@ -2,9 +2,11 @@ from flask import Flask, render_template, request, redirect, session, flash, g
 from db import get_db, close_db         # MySQL connection functions
 from config import Config               #  MySQL settings
 
-
 app = Flask(__name__)
-app.secret_key = "demo_secret"
+app.config.from_object(Config)
+app.secret_key = app.config["MYSQL_PASSWORD"]  # or use a real secret key
+app.teardown_appcontext(close_db)
+
 
 # -------------------- In-Memory Demo Storage -------------------- #
 users = [{"user_id": 1, "username": "admin", "password": "password"}]
