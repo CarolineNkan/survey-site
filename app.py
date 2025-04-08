@@ -1,4 +1,7 @@
-from flask import Flask, render_template, request, redirect, session, flash
+from flask import Flask, render_template, request, redirect, session, flash, g
+from db import get_db, close_db         # MySQL connection functions
+from config import Config               #  MySQL settings
+
 
 app = Flask(__name__)
 app.secret_key = "demo_secret"
