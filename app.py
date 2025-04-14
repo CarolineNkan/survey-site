@@ -4,7 +4,7 @@ from config import Config               #  MySQL settings
 
 app = Flask(__name__)
 app.config.from_object(Config)
-app.secret_key = app.config["MYSQL_PASSWORD"]  # or use a real secret key
+app.secret_key = app.config["MYSQL_PASSWORD"]  
 app.teardown_appcontext(close_db)
 
 
@@ -34,30 +34,26 @@ def login():
             return render_template("login.html", error="Invalid credentials")
     return render_template("login.html")
 
-
+#-------------Signup Route----------------------#
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
     if request.method == "POST":
         username = request.form["username"]
         password = request.form["password"]
+        email = request.form.get("email", "")
 
-        # Check for duplicates
-        if any(u["username"] == username for u in users):
-            return render_template("signup.html", error="❗ Username already exists")
-
-        # Add new user
-        new_id = len(users) + 1
-        users.append({
-            "user_id": new_id,
-            "username": username,
-            "password": password
-        })
-
-        # Log user in immediately
-        session["user_id"] = new_id
-        flash("🎉 Signup successful! You're logged in.")
-        return redirect("/dashboard")
-
+        db = get_db()
+        cursor = db.cursor()
+        try:
+            cursor.execute("""
+                INSERT INTO users (username, email, password)
+                VALUES (%s, %s, %s)
+            """, (username, email, password))
+            db.commit()
+            flash("🎉 Signup complete! Please login.")
+            return redirect("/login")
+        except Exception as e:
+            return render_template("signup.html", error="Username or email may already exist.")
     return render_template("signup.html")
 
 
