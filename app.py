@@ -20,19 +20,26 @@ responses = []
 def home():
     return "🎉  Survey App is Live!"
 
+#-----------Login Route--------------#
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         username = request.form["username"]
         password = request.form["password"]
-        user = next((u for u in users if u["username"] == username and u["password"] == password), None)
-        if user:
+
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute("SELECT user_id, password FROM users WHERE username = %s", (username,))
+        user = cursor.fetchone()
+
+        if user and user["password"] == password:
             session["user_id"] = user["user_id"]
             flash("✅ Logged in successfully.")
             return redirect("/dashboard")
         else:
             return render_template("login.html", error="Invalid credentials")
     return render_template("login.html")
+
 
 #-------------Signup Route----------------------#
 @app.route("/signup", methods=["GET", "POST"])
