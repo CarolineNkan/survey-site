@@ -64,106 +64,185 @@ def signup():
     return render_template("signup.html")
 
 
-
+#-----------Dashboard Route--------#
 @app.route("/dashboard")
 def dashboard():
     user_id = session.get("user_id")
     if not user_id:
         return redirect("/login")
-    user_surveys = [s for s in surveys if s["created_by"] == user_id]
-    return render_template("dashboard.html", surveys=user_surveys)
+
+    db = get_db()
+    cursor = db.cursor()
+
+    # Fetch all surveys with their author's username
+    cursor.execute("""
+        SELECT s.survey_id, s.title, s.description, u.username AS author
+        FROM surveys s
+        JOIN users u ON s.created_by = u.user_id
+    """)
+    surveys = cursor.fetchall()
+
+    #  Get the current logged-in user's username
+    cursor.execute("SELECT username FROM users WHERE user_id = %s", (user_id,))
+    user = cursor.fetchone()
+    username = user["username"] if user else "User"
+
+    return render_template("dashboard.html", surveys=surveys, username=username)
 
 
+#----------CreateSurvey Route----------#
 @app.route("/create-survey", methods=["GET", "POST"])
 def create_survey():
     if "user_id" not in session:
         return redirect("/login")
     
     if request.method == "POST":
-        survey_id = len(surveys) + 1
-        surveys.append({
-            "survey_id": survey_id,
-            "title": request.form["title"],
-            "description": request.form["description"],
-            "created_by": session["user_id"]
-        })
+        title = request.form["title"]
+        description = request.form["description"]
+        created_by = session["user_id"]
+
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute("""
+            INSERT INTO surveys (title, description, created_by)
+            VALUES (%s, %s, %s)
+        """, (title, description, created_by))
+        db.commit()
         flash("✅ Survey created!")
         return redirect("/dashboard")
+
     return render_template("create_survey.html")
-
-
+#---------Addquestions Route----------#
 @app.route("/surveys/<int:survey_id>/questions", methods=["GET", "POST"])
 def add_questions(survey_id):
     if "user_id" not in session:
         return redirect("/login")
 
+    db = get_db()
+    cursor = db.cursor()
+
     if request.method == "POST":
         question_text = request.form["question_text"]
-        questions.append({
-            "question_id": len(questions) + 1,
-            "survey_id": survey_id,
-            "question_text": question_text
-        })
-        flash("➕ Question added.")
+        try:
+            cursor.execute(
+                "INSERT INTO questions (survey_id, question_text) VALUES (%s, %s)",
+                (survey_id, question_text)
+            )
+            db.commit()
+            flash("➕ Question added.")
+        except Exception as e:
+            db.rollback()
+            return render_template("add_questions.html", error=str(e), survey_id=survey_id)
 
-    survey_questions = [q for q in questions if q["survey_id"] == survey_id]
+    # Fetch all questions for the current survey
+    cursor.execute(
+        "SELECT question_id, question_text FROM questions WHERE survey_id = %s",
+        (survey_id,)
+    )
+    survey_questions = cursor.fetchall()
+
     return render_template("add_questions.html", questions=survey_questions, survey_id=survey_id)
 
 
+#------------Answerquestions Route--------#
 @app.route("/surveys/<int:survey_id>/answer", methods=["GET", "POST"])
 def answer_survey(survey_id):
     if "user_id" not in session:
         return redirect("/login")
 
+    db = get_db()
+    cursor = db.cursor()
+
+    # Get or initialize answered questions in session
     if "answered_questions" not in session:
         session["answered_questions"] = []
 
     if request.method == "POST":
         answer = request.form["answer"]
         question_id = int(request.form["question_id"])
-        responses.append({
-            "survey_id": survey_id,
-            "question_id": question_id,
-            "user_id": session["user_id"],
-            "answer": answer
-        })
-        session["answered_questions"].append(question_id)
 
-    unanswered = [
-        q for q in questions
-        if q["survey_id"] == survey_id and q["question_id"] not in session["answered_questions"]
-    ]
+        try:
+            cursor.execute("""
+                INSERT INTO responses (survey_id, question_id, user_id, answer_text)
+                VALUES (%s, %s, %s, %s)
+            """, (survey_id, question_id, session["user_id"], answer))
+            db.commit()
+            session["answered_questions"].append(question_id)
+        except Exception as e:
+            db.rollback()
+            return render_template("answer.html", error=str(e), survey_id=survey_id)
 
-    if not unanswered:
+    # Fetch unanswered questions
+    cursor.execute("""
+        SELECT question_id, question_text FROM questions
+        WHERE survey_id = %s
+    """, (survey_id,))
+    all_questions = cursor.fetchall()
+
+    answered = session.get("answered_questions", [])
+    next_question = next((q for q in all_questions if q["question_id"] not in answered), None)
+
+    if not next_question:
         return render_template("answer.html", done=True, survey_id=survey_id)
 
-    return render_template("answer.html", question=unanswered[0], survey_id=survey_id)
-
-
+    return render_template("answer.html", question=next_question, survey_id=survey_id)
+#------------Viewresponses Route------#
 @app.route("/surveys/<int:survey_id>/responses")
 def view_responses(survey_id):
     if "user_id" not in session:
         return redirect("/login")
 
-    grouped = {}
-    for r in responses:
-        if r["survey_id"] == survey_id:
-            question_text = next((q["question_text"] for q in questions if q["question_id"] == r["question_id"]), "Unknown")
-            grouped.setdefault(question_text, []).append(r["answer"])
+    db = get_db()
+    cursor = db.cursor()
 
-    return render_template("view_responses.html", grouped_responses=grouped, survey_id=survey_id)
+    try:
+        cursor.execute("""
+            SELECT q.question_text, r.answer_text
+            FROM responses r
+            JOIN questions q ON r.question_id = q.question_id
+            WHERE r.survey_id = %s
+        """, (survey_id,))
+        rows = cursor.fetchall()
+
+        grouped = {}
+        for row in rows:
+            grouped.setdefault(row["question_text"], []).append(row["answer_text"])
+
+        return render_template("view_responses.html", grouped_responses=grouped, survey_id=survey_id)
+
+    except Exception as e:
+        return render_template("view_responses.html", error=str(e), grouped_responses={}, survey_id=survey_id)
 
 @app.route("/surveys/<int:survey_id>/delete", methods=["POST"])
 def delete_survey(survey_id):
     if "user_id" not in session:
         return redirect("/login")
 
-    global surveys, questions, responses
-    surveys = [s for s in surveys if s["survey_id"] != survey_id]
-    questions = [q for q in questions if q["survey_id"] != survey_id]
-    responses = [r for r in responses if r["survey_id"] != survey_id]
-    
-    flash("🗑️ Survey deleted.")
+    db = get_db()
+    cursor = db.cursor()
+    try:
+        # Delete responses tied to questions in this survey
+        cursor.execute("""
+            DELETE FROM responses 
+            WHERE question_id IN (
+                SELECT question_id FROM questions WHERE survey_id = %s
+            )
+        """, (survey_id,))
+
+        # Delete questions for this survey
+        cursor.execute("DELETE FROM questions WHERE survey_id = %s", (survey_id,))
+
+        # Finally, delete the survey
+        cursor.execute("DELETE FROM surveys WHERE survey_id = %s", (survey_id,))
+
+        db.commit()
+        flash("🗑️ Survey and related data deleted successfully.")
+    except Exception as e:
+        db.rollback()
+        flash(f"⚠️ Failed to delete survey: {e}")
+    finally:
+        cursor.close()
+
     return redirect("/dashboard")
 
 
